@@ -13,6 +13,8 @@ import time
 import nltk
 import google.generativeai as genai
 import numpy
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 nltk.download('punkt')
 nltk.download('punkt_tab')
@@ -24,10 +26,19 @@ nltk.download('maxent_ne_chunker_tab')
 
 load_dotenv()
 
-openai.api_key = os.environ["OPENAI_API_KEY"] # Store your API key securely as an environment variable.
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # Get Gemini API Key
-replicate_api_token = os.environ["REPLICATE_API_TOKEN"] # Get Replicate API token
-STORAGE_CONNECTION_STRING = os.environ.get("STORAGE_CONNECTION_STRING")
+key_vault_uri = os.environ["KEY_VAULT_URI"]
+credential = DefaultAzureCredential()
+client = SecretClient(vault_url=key_vault_uri, credential=credential)
+
+openai.api_key = client.get_secret("openai-api-key").value
+GEMINI_API_KEY = client.get_secret("gemini-api-key").value
+REPLICATE_API_TOKEN = client.get_secret("replicate-api-token").value
+STORAGE_CONNECTION_STRING = client.get_secret("storage-connection-string").value
+
+#openai.api_key = os.environ["OPENAI_API_KEY"] # Store your API key securely as an environment variable.
+#GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # Get Gemini API Key
+#replicate_api_token = os.environ["REPLICATE_API_TOKEN"] # Get Replicate API token
+#STORAGE_CONNECTION_STRING = os.environ.get("STORAGE_CONNECTION_STRING")
 STORY_CONTAINER_NAME = "storyfairy-stories" # Container for Stories
 IMAGE_CONTAINER_NAME = "storyfairy-images" # Container for Images
 
@@ -51,7 +62,7 @@ def generate_story_openai(topic):
        
 def generate_story_gemini(topic):
     try:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        genai.configure(api_key=GEMINI_API_KEY)
         prompt = f"Write a short, funny children's story about {topic} that is no more than 4-5 sentences long. Make the characters and the scene of the story as descriptive as possible"
         model = genai.GenerativeModel('gemini-1.5-flash') # or 'gemini-pro'
         response = model.generate_content(prompt)
