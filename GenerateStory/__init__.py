@@ -63,9 +63,8 @@ def generate_story_gemini(topic, api_key):
         logging.error(f"Gemini error: {e}")
         return None   
 
-def generate_image_stable_diffusion(prompt, api_token):
+def generate_image_stable_diffusion(prompt):
     try:
-        headers = {"Authorization": f"Token {api_token}"}
         output = replicate.run(
            "stability-ai/stable-diffusion-3",  # Stable Diffusion model
             input={
@@ -78,8 +77,7 @@ def generate_image_stable_diffusion(prompt, api_token):
                     "scheduler": "K_EULER_ANCESTRAL",
                     "width": 768, 
                     "height": 512               
-            },
-            headers=headers
+            }
         )
         image_url = output[0] # Get first element of returned list which is the URL
         logging.info(f"Generated image (Stable Diffusion): {image_url}")  # Log generated URL
@@ -88,9 +86,8 @@ def generate_image_stable_diffusion(prompt, api_token):
         logging.error(f"Stable Diffusion error: {e}")
         return None, prompt # Return None for URL and the prompt
    
-def generate_image_flux_schnell(prompt, api_token):
+def generate_image_flux_schnell(prompt):
     try:
-        headers = {"Authorization": f"Token {api_token}"}
         output = replicate.run(
             "black-forest-labs/flux-schnell",  # Flux Schnell model
             input={
@@ -101,8 +98,7 @@ def generate_image_flux_schnell(prompt, api_token):
                 "num_outputs": 1,
                 "output_quality": 80,
                 "num_inference_steps": 4
-                },
-                headers=headers  
+                }                
             )
         image_url = output[0]
         logging.info(f"Generated image (Flux Schnell): {image_url}")  # Log the generated image URL
@@ -182,8 +178,9 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         openai.api_key = client.get_secret("openai-api-key").value
         GEMINI_API_KEY = client.get_secret("gemini-api-key").value
         REPLICATE_API_TOKEN = client.get_secret("replicate-api-token").value
+        os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
         STORAGE_CONNECTION_STRING = client.get_secret("storage-connection-string").value
-
+        
         topic = req.params.get('topic')
         if not topic:
             try:
@@ -210,10 +207,10 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 detailed_prompt = construct_detailed_prompt(sentence, sentences, character_descriptions) # Create detailed prompt
 
                 logging.info('################ Entering generate_image_flux_schnell() Function ################')
-                image_url, prompt = generate_image_flux_schnell(detailed_prompt, REPLICATE_API_TOKEN) # Use default whimsical style
+                image_url, prompt = generate_image_flux_schnell(detailed_prompt) # Use default whimsical style
 
                 if image_url is None:  # Stable Diffusion fallback
-                    image_url, prompt = generate_image_stable_diffusion(detailed_prompt, REPLICATE_API_TOKEN)
+                    image_url, prompt = generate_image_stable_diffusion(detailed_prompt)
                     if image_url is None: # If flux schnell also fails
                         logging.error(f"Failed to generate image for prompt: {prompt}") # Log the failing prompt
                         continue # Skip this sentence and move to next one.
