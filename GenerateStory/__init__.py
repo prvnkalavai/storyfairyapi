@@ -11,18 +11,24 @@ from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient, ContentSettings
 import time
 import nltk
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
+from nltk.chunk import ne_chunk
 import google.generativeai as genai
 import numpy
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-nltk.download('punkt')
-nltk.download('punkt_tab')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('maxent_ne_chunker')
-nltk.download('words')
-nltk.download('averaged_perceptron_tagger_eng')
-nltk.download('maxent_ne_chunker_tab')
+try:
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+    nltk.download('averaged_perceptron_tagger')
+    nltk.download('maxent_ne_chunker')
+    nltk.download('words')
+    nltk.download('averaged_perceptron_tagger_eng')
+    nltk.download('maxent_ne_chunker_tab')
+except Exception as e:
+    logging.error(f"Error downloading NLTK resources: {e}")
 
 load_dotenv()
 
@@ -33,17 +39,45 @@ def generate_story_openai(topic, api_key):
     try:
         openai.api_key = api_key
         client = openai.OpenAI()
+        prompt = f"""
+            Write a short, imaginative and creative 5 sentence children's story about {topic}.  
+
+            Format the story in the following JSON format to ensure consistent structure: Avoid having any markdown components in the JSON output.            
+            {{
+                "sentences": [
+                    "Sentence 1 with full character and scene details.",
+                    "Sentence 2 with full character and scene details.",
+                    "Sentence 3 with full character and scene details.",
+                    "Sentence 4 with full character and scene details.",
+                    "Sentence 5 with full character and scene details." 
+                ]
+            }}
+            
+            Crucially, EVERY sentence must include these details:
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, and any unique attributes (e.g., clothing, toys) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
+            * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
+
+            Example:
+            "Leo, a brave knight with shining armor and a golden sword, stood in the dark, echoing castle, facing a fierce dragon with fiery breath."
+            "Leo, a brave knight with shining armor and a golden sword, charged at the fierce dragon with fiery breath in the dark, echoing castle."
+            # and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence. Make sure the story stays within the max_tokens limit.
+            """
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Or a suitable model
             messages=[
                 {"role": "system", "content": "You are a creative storyteller for children."},
-                {"role": "user", "content": f"Write a short, funny children's story about {topic} that is no more than 4-5 sentences long. Make the characters and the scene of the story as descriptive as possible"}
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=200
+            max_tokens=350
         )
-        story = response.choices[0].message.content
-        logging.info(f"Generated story: {story}")
-        return story
+        #story = response.choices[0].message.content
+        #return story
+        logging.info(f"Raw response from OpenAI: {response.choices[0].message.content}")
+        story, sentences = parse_story_json(response.choices[0].message.content.strip())
+        logging.info(f"Parsed JSON story: {story}")
+        return story, sentences       
+        
     except (openai.OpenAIError, requests.exceptions.RequestException) as e: # Catch OpenAI errors
         logging.error(f"OpenAI API error: {e}")
         return None
@@ -52,32 +86,127 @@ def generate_story_gemini(topic, api_key):
     try:
         Gemini_api_key = api_key
         genai.configure(api_key=Gemini_api_key)
-        prompt = f"Write a short, funny children's story about {topic} that is no more than 4-5 sentences long. Make the characters and the scene of the story as descriptive as possible"
+        prompt = f"""
+            Write a short, imaginative and creative 5 sentence children's story about {topic}.  
+
+            Format the story as a followind JSON object with each sentence as a separate entry in an array of sentences to ensure consistent structure:
+            Avoid having any markdown components in the JSON output.
+            {{
+                "sentences": [
+                    "Sentence 1 with full character and scene details.",
+                    "Sentence 2 with full character and scene details.",
+                    "Sentence 3 with full character and scene details.",
+                    "Sentence 4 with full character and scene details.",
+                    "Sentence 5 with full character and scene details." 
+                ]
+            }}
+            
+            Crucially, EVERY sentence must include these details:
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, and any unique attributes (e.g., clothing, toys) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
+            * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
+
+            Example:
+            "Leo, a brave knight with shining armor and a golden sword, stood in the dark, echoing castle, facing a fierce dragon with fiery breath."
+            "Leo, a brave knight with shining armor and a golden sword, charged at the fierce dragon with fiery breath in the dark, echoing castle."
+            # and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
+            """
         model = genai.GenerativeModel('gemini-1.5-flash') # or 'gemini-pro'
         response = model.generate_content(prompt)
-        story = response.text
-        logging.info(f"Generated story (Gemini): {story}")
-        logging.info(f"Prompt used for Gemini: {prompt}")
-        return story
+        logging.info(f"Raw response from Gemini: {response.text}")
+        story, sentences = parse_story_json(response.text.strip())
+        logging.info(f"Parsed JSON story: {story}")
+        return story, sentences
+    
     except Exception as e:
         logging.error(f"Gemini error: {e}")
         return None   
 
-def generate_image_stable_diffusion(prompt):
+def parse_story_json(story_response):
+    """Parses the JSON response from the language model (OpenAI/Gemini), extracts sentences, and handles errors."""
+
+    try:
+        #story_json_string = story_json_string.replace("```json", "").strip()
+        story_json = json.loads(story_response)
+        raw_sentences = story_json['sentences']
+        sentences = [sentence.strip() for sentence in raw_sentences]
+
+        # Join sentences into a full story without new lines
+        story = ' '.join(sentences)
+        return story, sentences
+    except Exception as e:
+        logging.error(f"Error parsing JSON: {e}")
+        logging.error(f"Invalid JSON string: {story_response}")
+        return None, None
+
+def simplify_story(detailed_story):
+    try:
+        client = openai.OpenAI() # Or use Gemini. Configure appropriately
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Suitable model for simplification
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that simplifies text."},
+                {"role": "user", "content": f"Please simplify the following story, removing repetitive descriptions while maintaining the core narrative:\n\n{detailed_story}"}
+
+            ],
+            max_tokens=300 # Adjust if needed
+        )
+        simplified_story = response.choices[0].message.content
+        logging.info(f"Simplified story:\n{simplified_story}")
+        return simplified_story
+
+    except Exception as e:
+        logging.error(f"Error simplifying story: {e}")
+        return detailed_story  # Return original story if simplification fails
+
+def generate_reference_image(character_description):
+    prompt = f"High-resolution portrait of {character_description}, full body, detailed, character concept art, trending on ArtStation" # Create prompt
+    try:
+        logging.info(f"Reference image prompt: {prompt}")
+        output = replicate.run(
+            "stability-ai/stable-diffusion-3", # Or another high-quality model
+            input={
+                "prompt": prompt,
+                "cfg": 7,
+                "steps": 28,
+                "width": 1024, # Higher resolution
+                "height": 1024, # Higher resolution
+                "samples": 1, # Generate just one image.
+                "aspect_ratio": "1:1",
+                "output_quality": 90,
+                "negative_prompt": "ugly, blurry, distorted, text, watermark",
+                "prompt_strength": 0.85,
+                "scheduler": "K_EULER_ANCESTRAL"
+            }
+        )
+
+        image_url = output[0] # Get URL from replicate response
+        logging.info(f"Generated reference image: {image_url}")
+
+        return image_url  # Return URL of reference image.
+    except Exception as e:
+        logging.error(f"Error generating reference image: {e}")
+        return None
+
+def generate_image_stable_diffusion(prompt,reference_image_url=None):
+    input_params = {
+        "cfg": 7,
+        "steps": 28,
+        "prompt": prompt,
+        "aspect_ratio": "1:1",
+        "output_quality": 90,
+        "negative_prompt": "ugly, blurry, distorted, text, watermark",
+        "prompt_strength": 0.85,
+        "scheduler": "K_EULER_ANCESTRAL",
+        "width": 768, 
+        "height": 768  
+    }
+    if reference_image_url:
+        input_params["image"] = reference_image_url
     try:
         output = replicate.run(
            "stability-ai/stable-diffusion-3",  # Stable Diffusion model
-            input={
-                "cfg": 7,
-                    "steps": 28,
-                    "prompt": prompt,
-                    "output_quality": 90,
-                    "negative_prompt": "ugly, blurry, distorted, text, watermark",
-                    "prompt_strength": 0.85,
-                    "scheduler": "K_EULER_ANCESTRAL",
-                    "width": 768, 
-                    "height": 512               
-            }
+            input=input_params
         )
         image_url = output[0] # Get first element of returned list which is the URL
         logging.info(f"Generated image (Stable Diffusion): {image_url}")  # Log generated URL
@@ -107,11 +236,7 @@ def generate_image_flux_schnell(prompt):
         logging.error(f"Flux Schnell error: {e}")
         return None, prompt
     
-def split_story(story):
-    sentences = story.split('. ')  # Split into sentences
-    return sentences
-
-def save_to_blob_storage(data, content_type, container_name, file_name, connection_string): # New Function to save to blob storage
+def save_to_blob_storage(data, content_type, container_name, file_name, connection_string): 
   try:
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
     container_client = blob_service_client.get_container_client(container_name)
@@ -132,45 +257,19 @@ def save_to_blob_storage(data, content_type, container_name, file_name, connecti
     logging.error(f"Error uploading to blob storage: {e}")
     return None
 
-def construct_detailed_prompt(sentence, sentences, character_descriptions, image_style="whimsical"):
-    previous_sentence = sentences[sentences.index(sentence)-1] if sentences.index(sentence) > 0 else "" # Get previous sentence, handle first sentence case
-    prompt = f"{previous_sentence} {sentence}"
-    logging.info('################ Entering enhance_prompt_with_context() Function ################')
-    prompt = enhance_prompt_with_context(prompt, character_descriptions, sentence)
-    final_prompt = f"{prompt}, {image_style} style, children's book illustration, vibrant colors"
-    return final_prompt
+def construct_detailed_prompt(sentence, image_style="whimsical"):
+    prompt = f"{sentence}, {image_style} style, children's book illustration, vibrant colors"
+    return prompt, None
 
-def enhance_prompt_with_context(prompt, character_descriptions, sentence):
-    for chunk in nltk.ne_chunk(nltk.pos_tag(nltk.word_tokenize(sentence))):
-        if hasattr(chunk, 'label') and chunk.label() == 'PERSON':  # Identify named entities
-            character_name = ' '.join(c[0] for c in chunk)
-            
-            # Attempt to extract a simple description (adjective before the name)
-            words = nltk.word_tokenize(sentence)
-            name_index = words.index(character_name.split()[-1]) # Use last name if it's multiple words
-            if name_index > 0 and nltk.pos_tag([words[name_index - 1]])[0][1].startswith('JJ'): # Check if adjective before name.
-                description = words[name_index - 1]
-                character_descriptions[character_name] = description
-
-    # Scene Description Extraction (using simple heuristics)
-    scene_keywords = ["in a", "inside a", "at the", "on a", "beneath the", "above the"] # Extend list as needed
-    for keyword in scene_keywords:
-        if keyword in sentence.lower():
-            scene_description = sentence.split(keyword, 1)[1].strip() # Split after first instance of keyword.
-            prompt = f"{prompt}, {scene_description}"
-            break  # Use first matching scene description found
-
-    return prompt
-    
 async def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
+    logging.info('############### Python HTTP trigger function processed a request.################')
 
     try:
         if os.environ.get("AZURE_FUNCTIONS_ENVIRONMENT") is None: # Check if development environment
-            logging.info("Using local authentication")
+            logging.info("################# Using local authentication #################")
             
         else:  # Azure environment
-            logging.info("Using Managed Identity authentication.")
+            logging.info("#################Using Managed Identity authentication. #################")
             
         key_vault_uri = os.environ["KEY_VAULT_URI"]
         credential = DefaultAzureCredential()
@@ -191,46 +290,56 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 topic = req_body.get('topic')
 
         if topic:
-            story = generate_story_gemini(topic, GEMINI_API_KEY)
-            if story is None: # Check if openai story generation failed
-                story = generate_story_openai(topic, openai.api_key)  # Gemini fallback
-                if story is None: # If gemini also fails
+            story, sentences = generate_story_gemini(topic, GEMINI_API_KEY) 
+            if story is None: # Check if gemini story generation failed
+                story, sentences = generate_story_openai(topic, openai.api_key)  # Gemini fallback
+                if story is None: # If openai also fails
                     return func.HttpResponse("Failed to generate story using OpenAI and Gemini", status_code=500)
+            
+            simplified_story = simplify_story(story)  # Simplify the story for presentation
+            
 
-            sentences = split_story(story)
-            character_descriptions = {}
+            simplified_story_filename = f"{topic.replace(' ', '_')}" # Meaningful story filename
+            detailed_story_filename = f"{topic.replace(' ', '_')}_detailed" # Separate file name for detailed story
+            simplified_story_url = save_to_blob_storage(simplified_story, "text/plain", STORY_CONTAINER_NAME, simplified_story_filename, STORAGE_CONNECTION_STRING)
+            detailed_story_url = save_to_blob_storage(story, "text/plain", STORY_CONTAINER_NAME, detailed_story_filename, STORAGE_CONNECTION_STRING)
+            if simplified_story_url is None: # Handle story upload failure
+                return func.HttpResponse("Failed to upload story to blob storage", status_code=500)
+            if detailed_story_url is None: # Handle Detailed story upload failure
+                return func.HttpResponse("Failed to upload Detailed story to blob storage", status_code=500)
+            
+            #story_json = json.loads(story) # Load detailed story, which is a json string into python dict
+            #sentences = story_json.get("sentences", []) # Get the list of sentences from the dictionary
+            response_data = {  # Initialize response data here
+                "storyText": simplified_story,
+                "storyUrl": simplified_story_url,
+                "detailedStoryUrl": detailed_story_url,
+                "images": []
+            }
+            
             image_urls = []
             image_prompts = []
 
-            for i, sentence in enumerate(sentences):  # Iterate through ALL sentences
-                logging.info('################ Entering construct_detailed_prompt() Function ################')
-                detailed_prompt = construct_detailed_prompt(sentence, sentences, character_descriptions) # Create detailed prompt
+            if sentences:
+                for i, sentence in enumerate(sentences):  # Iterate through ALL sentences
+                    logging.info('################ Entering construct_detailed_prompt() Function ################')
+                    detailed_prompt, _ = construct_detailed_prompt(sentence) # Create detailed prompt, _ for unused reference image url
+                
+                    logging.info('################ Entering generate_image_stable_diffusion() Function ################')
+                    image_url, prompt = generate_image_flux_schnell(detailed_prompt) # No reference image available
+                    if image_url is None:  # Stable Diffusion fallback
+                        image_url, prompt = generate_image_stable_diffusion(detailed_prompt) 
+                        if image_url is None: # If flux schnell also fails
+                            logging.error(f"Failed to generate image for prompt: {prompt}") # Log the failing prompt
+                            continue # Skip this sentence and move to next one.
 
-                logging.info('################ Entering generate_image_flux_schnell() Function ################')
-                image_url, prompt = generate_image_flux_schnell(detailed_prompt) # Use default whimsical style
+                    image_urls.append(image_url)
+                    image_prompts.append(prompt)
+                    time.sleep(1)
 
-                if image_url is None:  # Stable Diffusion fallback
-                    image_url, prompt = generate_image_stable_diffusion(detailed_prompt)
-                    if image_url is None: # If flux schnell also fails
-                        logging.error(f"Failed to generate image for prompt: {prompt}") # Log the failing prompt
-                        continue # Skip this sentence and move to next one.
-
-                image_urls.append(image_url)
-                image_prompts.append(prompt)
-                time.sleep(1)
-
-            story_filename = f"{topic.replace(' ', '_')}" # Meaningful story filename
-            story_url = save_to_blob_storage(story, "text/plain", STORY_CONTAINER_NAME, story_filename, STORAGE_CONNECTION_STRING)
-            if story_url is None: # Handle story upload failure
-                return func.HttpResponse("Failed to upload story to blob storage", status_code=500)
+            else: # If sentences list is empty or None
+                return func.HttpResponse("Error processing the story. Please try again.", status_code=500)
             
-            
-            saved_image_urls = []
-            response_data = {  # Initialize response data here
-                "storyText": story,
-                "storyUrl": story_url,
-                "images": []
-            }
             for i, image_url in enumerate(image_urls):
                 try:
                     image_response = requests.get(image_url)  # Get the actual URL from the list returned by replicate
