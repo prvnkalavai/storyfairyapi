@@ -36,11 +36,10 @@ load_dotenv()
 STORY_CONTAINER_NAME = "storyfairy-stories" # Container for Stories
 IMAGE_CONTAINER_NAME = "storyfairy-images" # Container for Images
 
-def generate_story_openai(topic, api_key):
+def generate_story_openai(topic, api_key, story_length):
     try:
-        openai.api_key = api_key
-        client = openai.OpenAI()
-        prompt = create_story_prompt(topic)
+        client = openai.OpenAI(api_key=api_key)
+        prompt = create_story_prompt(topic, story_length)
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Or a suitable model
             messages=[
@@ -60,11 +59,11 @@ def generate_story_openai(topic, api_key):
         logging.error(f"OpenAI API error: {e}")
         return None
        
-def generate_story_gemini(topic, api_key):
+def generate_story_gemini(topic, api_key, story_length):
     try:
         Gemini_api_key = api_key
         genai.configure(api_key=Gemini_api_key)
-        prompt = create_story_prompt(topic)
+        prompt = create_story_prompt(topic, story_length)
         model = genai.GenerativeModel('gemini-1.5-flash') # or 'gemini-pro'
         response = model.generate_content(prompt)
         logging.info(f"Raw response from Gemini: {response.text}")
@@ -76,11 +75,13 @@ def generate_story_gemini(topic, api_key):
         logging.error(f"Gemini error: {e}")
         return None   
 
-def create_story_prompt(topic):
+def create_story_prompt(topic, story_length="short"):
     """Creates the story prompt based on whether a topic is provided or not."""
+    sentence_count = { "short": 5, "medium": 7, "long": 9}
+    num_sentences = sentence_count.get(story_length, 5)
     if topic:
         prompt = f"""
-        Write a short, imaginative and creative 5 sentence children's story about {topic}.  
+        Write a {story_length}, imaginative and creative {num_sentences} sentence children's story about {topic}.  
 
             Format the story as a followind JSON object with each sentence as a separate entry in an array of sentences to ensure consistent structure:
             Avoid having any markdown components in the JSON output.
@@ -95,9 +96,10 @@ def create_story_prompt(topic):
             }}
             
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, and any unique attributes (e.g., clothing, toys) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes (e.g., clothing, toys, skin color, hair/fur color,) in EVERY sentence.  Be extremely repetitive with explicit details.
             * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
             * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
+            * **Objects/Items:** If any objects/tools/machinery are mentioned in the story, scene or used by any of the characters, maintain the full description of those artifacts and keep it consistent across the story/scenes. Be extremely repetitive with explicit details
 
             Example:
             "Leo, a brave knight with shining armor and a golden sword, stood in the dark, echoing castle, facing a fierce dragon with fiery breath."
@@ -106,7 +108,7 @@ def create_story_prompt(topic):
             """
     else:
         prompt = """
-        Write a random short, imaginative and creative 5 sentence children's story.  
+        Write a random {story_length}, imaginative and creative {num_sentences} sentence children's story.  
 
             Format the story as a followind JSON object with each sentence as a separate entry in an array of sentences to ensure consistent structure:
             Avoid having any markdown components in the JSON output.
@@ -121,9 +123,10 @@ def create_story_prompt(topic):
             }
             
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, and any unique attributes (e.g., clothing, toys) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes (e.g., clothing, toys, skin color, hair/fur color,) in EVERY sentence.  Be extremely repetitive with explicit details.
             * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
             * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
+            * **Objects/Items:** If any objects/tools/machinery/items/artifacts are mentioned in the story, scene or used by any of the characters, maintain the full description of those artifacts and keep it consistent across the story/scenes. Be extremely repetitive with explicit details
 
             Example:
             "Leo, a brave knight with shining armor and a golden sword, stood in the dark, echoing castle, facing a fierce dragon with fiery breath."
@@ -161,9 +164,9 @@ def parse_story_json(story_response):
         logging.error(f"JSON parsing error: {e}")  # Log the specific exception
         return None, None  # Return None for both to indicate failure
 
-def simplify_story(detailed_story):
+def simplify_story(detailed_story, api_key):
     try:
-        client = openai.OpenAI() # Or use Gemini. Configure appropriately
+        client = openai.OpenAI(api_key=api_key) # Or use Gemini. Configure appropriately
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Suitable model for simplification
             messages=[
@@ -303,25 +306,29 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         STORAGE_CONNECTION_STRING = client.get_secret("storage-connection-string").value
         
         topic = req.params.get('topic')
+        story_length = req.params.get('storyLength', 'short')
+        image_style = req.params.get('imageStyle', 'whimsical')
+        
         if not topic:  # Check if the topic is missing in query parameters
             try:
                 req_body = req.get_json() # Check if topic is in request body
                 if req_body: # Check if request body is empty
                     topic = req_body.get('topic')  # Try to get the topic from the request body
-
+                    story_length= req_body.get('storyLength', 'short')
+                    image_style= req_body.get('imageStyle', 'whimsical')
             except ValueError:
                 pass
         if topic is None:
             # Do nothing and return to wait for topic from frontend. No need to generate random story here. 
             return func.HttpResponse("Waiting for topic input...", status_code=400) 
         topic = str(topic).strip() 
-        story, sentences = generate_story_gemini(topic, GEMINI_API_KEY) 
+        story, sentences = generate_story_gemini(topic, GEMINI_API_KEY, story_length) 
         if story is None: # Check if gemini story generation failed
-            story, sentences = generate_story_openai(topic, openai.api_key)  # Gemini fallback
+            story, sentences = generate_story_openai(topic, openai.api_key, story_length)  # Gemini fallback
             if story is None: # If openai also fails
                 return func.HttpResponse("Failed to generate story using OpenAI and Gemini", status_code=500)
             
-        simplified_story = simplify_story(story)  # Simplify the story for presentation
+        simplified_story = simplify_story(story, openai.api_key)  # Simplify the story for presentation
         logging.info(f"Topic (before check): Value: '{topic}', Type: {type(topic)}")
         if not topic or topic == '""':
             logging.info("Topic is null. Generating a random file name")
@@ -353,7 +360,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         if sentences:
             for i, sentence in enumerate(sentences):  # Iterate through ALL sentences
                 logging.info('################ Entering construct_detailed_prompt() Function ################')
-                detailed_prompt, _ = construct_detailed_prompt(sentence) # Create detailed prompt, _ for unused reference image url
+                detailed_prompt, _ = construct_detailed_prompt(sentence, image_style) # Create detailed prompt, _ for unused reference image url
             
                 logging.info('################ Entering generate_image_stable_diffusion() Function ################')
                 image_url, prompt = generate_image_flux_schnell(detailed_prompt) # No reference image available
