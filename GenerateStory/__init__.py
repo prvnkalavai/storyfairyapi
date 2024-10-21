@@ -8,7 +8,17 @@ import json
 from io import BytesIO
 from PIL import Image
 from dotenv import load_dotenv
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient, ContentSettings
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient, ContentSettings, generate_blob_sas, BlobSasPermissions, __version__
+from azure.storage.blob._shared_access_signature import BlobSharedAccessSignature
+from datetime import datetime, timedelta
+from collections import OrderedDict
+from urllib.parse import quote
+from urllib.parse import unquote
+import hmac
+import hashlib
+import base64
+import pytz
+import uuid
 import time
 import uuid
 import nltk
@@ -96,7 +106,7 @@ def create_story_prompt(topic, story_length="short"):
             }}
             
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes (e.g., clothing, toys, skin color, hair/fur color,) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes like clothing, toys, skin color, hair/fur color etc in EVERY sentence.  Be extremely repetitive with explicit details.
             * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
             * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
             * **Objects/Items:** If any objects/tools/machinery are mentioned in the story, scene or used by any of the characters, maintain the full description of those artifacts and keep it consistent across the story/scenes. Be extremely repetitive with explicit details
@@ -123,7 +133,7 @@ def create_story_prompt(topic, story_length="short"):
             }
             
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes (e.g., clothing, toys, skin color, hair/fur color,) in EVERY sentence.  Be extremely repetitive with explicit details.
+            * **Central Character:**  Always mention the main character by name. Include a FULL description of their appearance, personality, accessories, and any unique attributes like clothing, toys, skin color, hair/fur color,etc in EVERY sentence.  Be extremely repetitive with explicit details.
             * **Scene:**  Vividly describe the setting in EVERY sentence.  If the scene changes, provide the FULL new scene description in EVERY subsequent sentence.  Be extremely repetitive with explicit details.
             * **Supporting Characters:** If new characters appear, provide their FULL descriptions in EVERY sentence where they are present. Be extremely repetitive with explicit details.
             * **Objects/Items:** If any objects/tools/machinery/items/artifacts are mentioned in the story, scene or used by any of the characters, maintain the full description of those artifacts and keep it consistent across the story/scenes. Be extremely repetitive with explicit details
@@ -171,7 +181,7 @@ def simplify_story(detailed_story, api_key):
             model="gpt-4o-mini",  # Suitable model for simplification
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that simplifies text."},
-                {"role": "user", "content": f"Please simplify the following story, removing repetitive descriptions while maintaining the core narrative:\n\n{detailed_story}"}
+                {"role": "user", "content": f"Please simplify the following story, removing repetitive descriptions while maintaining the core narrative in the same number of sentences as the original story:\n\n{detailed_story}"}
 
             ],
             max_tokens=300 # Adjust if needed
@@ -266,10 +276,10 @@ def save_to_blob_storage(data, content_type, container_name, file_name, connecti
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
     container_client = blob_service_client.get_container_client(container_name)
 
-    if container_name == STORY_CONTAINER_NAME:
-        file_name += ".txt"
-    else:
-        file_name += ".png" # Check and change the image format as needed
+    #if container_name == STORY_CONTAINER_NAME:
+    #    file_name += ".txt"
+    #else:
+    #    file_name += ".png" # Check and change the image format as needed
         
     blob_client = container_client.get_blob_client(file_name)
 
@@ -281,6 +291,26 @@ def save_to_blob_storage(data, content_type, container_name, file_name, connecti
   except Exception as e:
     logging.error(f"Error uploading to blob storage: {e}")
     return None
+
+def generate_sas_token(account_name, account_key, container_name, blob_name, api_version="2022-11-02"): # Modified code
+    """Generates a SAS token for a blob with a specific API version."""
+    logging.info(f"Azure Storage Blob SDK version: {__version__}")
+    est = pytz.timezone('US/Eastern')
+    now = datetime.now(est)
+    expiry_time = now + timedelta(hours=1)
+    
+    sas_token = generate_blob_sas(
+        account_name=account_name,
+        container_name=container_name,
+        blob_name=blob_name,
+        account_key=account_key,
+        permission=BlobSasPermissions(read=True),
+        expiry=expiry_time.astimezone(pytz.utc),  # Expiry time in UTC
+        version=api_version,  # Specify the desired API version
+    )
+
+    return sas_token
+
 
 def construct_detailed_prompt(sentence, image_style="whimsical"):
     prompt = f"{sentence}, {image_style} style, children's book illustration, vibrant colors"
@@ -304,6 +334,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         REPLICATE_API_TOKEN = client.get_secret("replicate-api-token").value
         os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
         STORAGE_CONNECTION_STRING = client.get_secret("storage-connection-string").value
+        ACCOUNT_KEY = client.get_secret("account-key").value
         
         topic = req.params.get('topic')
         story_length = req.params.get('storyLength', 'short')
@@ -332,12 +363,14 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f"Topic (before check): Value: '{topic}', Type: {type(topic)}")
         if not topic or topic == '""':
             logging.info("Topic is null. Generating a random file name")
-            simplified_story_filename = str(uuid.uuid4())
-            detailed_story_filename = f"{str(uuid.uuid4())}_detailed"
+            story_title=str(uuid.uuid4())
+            simplified_story_filename =story_title + ".txt"
+            detailed_story_filename = story_title + "_detailed.txt"
         else:
             logging.info(f"Using provided topic for the file name: {topic}")
-            simplified_story_filename = f"{topic.replace(' ', '_')}" # Meaningful story filename
-            detailed_story_filename = f"{topic.replace(' ', '_')}_detailed" # Separate file name for detailed story
+            story_title=topic.replace(' ', '_')
+            simplified_story_filename = f"{topic.replace(' ', '_')}.txt" # Meaningful story filename
+            detailed_story_filename = f"{topic.replace(' ', '_')}_detailed.txt" # Separate file name for detailed story
         simplified_story_url = save_to_blob_storage(simplified_story, "text/plain", STORY_CONTAINER_NAME, simplified_story_filename, STORAGE_CONNECTION_STRING)
         detailed_story_url = save_to_blob_storage(story, "text/plain", STORY_CONTAINER_NAME, detailed_story_filename, STORAGE_CONNECTION_STRING)
         if simplified_story_url is None: # Handle story upload failure
@@ -351,7 +384,9 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             "storyText": simplified_story,
             "storyUrl": simplified_story_url,
             "detailedStoryUrl": detailed_story_url,
-            "images": []
+            "images": [],
+            "imageContainerName": IMAGE_CONTAINER_NAME,
+            "blobStorageConnectionString": STORAGE_CONNECTION_STRING
         }
            
         image_urls = []
@@ -381,12 +416,20 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 image_response = requests.get(image_url)  # Get the actual URL from the list returned by replicate
                 image_response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
                 image_data = image_response.content
-                image_filename = f"{simplified_story_filename}-image{i+1}" # Updated image file name
+                image_filename = f"{story_title}-image{i+1}.png" # Updated image file name
                 saved_image_url = save_to_blob_storage(image_data, "image/jpeg", IMAGE_CONTAINER_NAME, image_filename, STORAGE_CONNECTION_STRING) # Pass file_name
 
                 if saved_image_url: # Check if upload was successful
+                    sas_token = generate_sas_token(
+                        account_name="rgstoryfairya7d9",
+                        account_key=ACCOUNT_KEY,
+                        container_name=IMAGE_CONTAINER_NAME,
+                        blob_name=image_filename,
+                        api_version="2022-11-02"
+                    )
+                    sas_url = f"{saved_image_url}?{sas_token}"
                     response_data["images"].append({
-                        "imageUrl": saved_image_url,
+                        "imageUrl": sas_url,
                         "prompt": image_prompts[i]
                     })
                     logging.info(f"Generated image {i+1} URL: {saved_image_url}")
