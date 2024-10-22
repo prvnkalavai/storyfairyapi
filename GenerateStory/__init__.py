@@ -292,7 +292,7 @@ def save_to_blob_storage(data, content_type, container_name, file_name, connecti
     logging.error(f"Error uploading to blob storage: {e}")
     return None
 
-def generate_sas_token(account_name, account_key, container_name, blob_name, api_version="2022-11-02"): # Modified code
+def generate_sas_token(account_name, account_key, container_name, blob_name, api_version="2022-11-02"): 
     """Generates a SAS token for a blob with a specific API version."""
     logging.info(f"Azure Storage Blob SDK version: {__version__}")
     est = pytz.timezone('US/Eastern')
@@ -305,12 +305,11 @@ def generate_sas_token(account_name, account_key, container_name, blob_name, api
         blob_name=blob_name,
         account_key=account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=expiry_time.astimezone(pytz.utc),  # Expiry time in UTC
-        version=api_version,  # Specify the desired API version
+        expiry=expiry_time.astimezone(pytz.utc), 
+        version=api_version,  
     )
 
     return sas_token
-
 
 def construct_detailed_prompt(sentence, image_style="whimsical"):
     prompt = f"{sentence}, {image_style} style, children's book illustration, vibrant colors"
