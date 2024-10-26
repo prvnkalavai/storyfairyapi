@@ -481,8 +481,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Prepare response
         response_data = {
-            "Detailedstory": story,
-            "Simplifiedstory": simplified_story,
+            "StoryText": simplified_story,
             "storyUrl": simplified_story_url,
             "detailedStoryUrl": detailed_story_url,
             "images": [result for result in image_results if result],
