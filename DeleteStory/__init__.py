@@ -6,6 +6,7 @@ from azure.identity import DefaultAzureCredential
 import os
 from ..shared.auth.decorator import require_auth
 from ..shared.services.cosmos_service import CosmosService
+from urllib.parse import unquote  
 
 @require_auth
 async def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -22,7 +23,9 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Get story ID from request
-        story_id = req.params.get('storyId')
+        story_id = req.route_params.get('storyId')
+        logging.info(f"Story ID: {story_id}")
+
         if not story_id:
             return func.HttpResponse(
                 json.dumps({"error": "Story ID is required"}),
@@ -35,6 +38,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Get story details to verify ownership and get blob references
         story = await cosmos_service.get_story_by_id(story_id, user_id)
+        
         if not story:
             return func.HttpResponse(
                 json.dumps({"error": "Story not found or unauthorized"}),
@@ -43,6 +47,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Delete story from Cosmos DB
+        logging.info(f"Deleting story with ID: {story_id}")
         deleted = await cosmos_service.delete_story(story_id, user_id)
         if not deleted:
             return func.HttpResponse(
@@ -56,28 +61,30 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             account_name = os.environ["ACCOUNT_NAME"]
             blob_service_url = f"https://{account_name}.blob.core.windows.net"
             credential = DefaultAzureCredential()
-            blob_service_client = BlobServiceClient(blob_service_url, credential=credential)
+            blob_service_client = BlobServiceClient(blob_service_url, credential=credential) 
 
             # Delete story text blobs
             story_container = blob_service_client.get_container_client("storyfairy-stories")
             if story.get("storyUrl"):
-                story_blob_name = story["storyUrl"].split("/")[-1].split("?")[0]
+                story_blob_name = unquote(story["storyUrl"].split("/")[-1].split("?")[0])  
+                logging.info(f"Deleting story blob: {story_blob_name}")
                 story_container.delete_blob(story_blob_name)
             if story.get("detailedStoryUrl"):
-                detailed_story_blob_name = story["detailedStoryUrl"].split("/")[-1].split("?")[0]
+                detailed_story_blob_name = unquote(story["detailedStoryUrl"].split("/")[-1].split("?")[0])  
+                logging.info(f"Deleting detailed story blob: {detailed_story_blob_name}")
                 story_container.delete_blob(detailed_story_blob_name)
 
             # Delete image blobs
             image_container = blob_service_client.get_container_client("storyfairy-images")
             for image in story.get("images", []):
                 if image.get("imageUrl"):
-                    image_blob_name = image["imageUrl"].split("/")[-1].split("?")[0]
+                    image_blob_name = unquote(image["imageUrl"].split("/")[-1].split("?")[0])
                     image_container.delete_blob(image_blob_name)
 
             # Delete cover images
             for cover in story.get("coverImages", {}).values():
                 if cover.get("url"):
-                    cover_blob_name = cover["url"].split("/")[-1].split("?")[0]
+                    cover_blob_name = unquote(cover["url"].split("/")[-1].split("?")[0])
                     image_container.delete_blob(cover_blob_name)
 
         except Exception as e:

@@ -15,7 +15,7 @@ class CosmosService:
       self.database = self.client.get_database_client('StoryFairyDB')
       self.user_container = self.database.get_container_client('Users')
       self.transaction_container = self.database.get_container_client('CreditTransactions')
-      self.stories_container = self.database.get_container_client("Stories")
+      self.stories_container = self.database.get_container_client("UserStories")
 
       #logging.info("initialised cosmos service")
 
@@ -155,40 +155,40 @@ class CosmosService:
             logging.error(f"Error fetching user stories from Cosmos DB: {e}")
             raise
 
-    async def delete_story(self, story_id: str, user_id: str) -> bool:
-        """
-        Delete a story document from Cosmos DB
-        Returns True if successful, False otherwise
-        """
-        try:
-            # First verify the story belongs to the user
-            query = """
-                SELECT * FROM c 
-                WHERE c.id = @id AND c.userId = @userId
-            """
-            parameters = [
-                {"name": "@id", "value": story_id},
-                {"name": "@userId", "value": user_id}
-            ]
+    async def delete_story(self, story_id: str, user_id: str) -> bool:  
+        """  
+        Delete a story document from Cosmos DB  
+        Returns True if successful, False otherwise  
+        """  
+        try:  
+            # First verify the story belongs to the user  
+            query = """  
+            SELECT * FROM c   
+            WHERE c.id = @id AND c.userId = @userId  
+            """  
+            parameters = [  
+                {"name": "@id", "value": story_id},  
+                {"name": "@userId", "value": user_id}  
+            ]  
 
-            result = list(self.stories_container.query_items(
-                query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
-            ))
+            result = list(self.stories_container.query_items(  
+                query=query,  
+                parameters=parameters,  
+                enable_cross_partition_query=True  
+            ))  
 
-            if not result:
-                return False
+            if not result:  
+                return False  
 
-            # Delete the story
-            self.stories_container.delete_item(
-                item=story_id, 
-                partition_key=user_id
-            )
-            return True
-        except Exception as e:
-            logging.error(f"Error deleting story from Cosmos DB: {e}")
-            raise
+            # Delete the story with properly formatted partition key  
+            self.stories_container.delete_item(  
+                item=story_id,   
+                partition_key=user_id  # Format partition key as a list  
+            )  
+            return True  
+        except Exception as e:  
+            logging.error(f"Error deleting story from Cosmos DB: {e}")  
+            raise  
 
     async def get_story_by_id(self, story_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """

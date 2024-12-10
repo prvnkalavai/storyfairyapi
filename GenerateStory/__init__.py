@@ -435,7 +435,7 @@ async def save_story_to_cosmos(story_data, user_id):
             "id": str(uuid.uuid4()),
             "userId": user_id,
             "title": story_data["title"],
-            "storyText": story_data["StoryText"],
+            "storyText": story_data["storyText"],
             "detailedStoryText": story_data.get("detailedStoryText"),
             "storyUrl": story_data["storyUrl"],
             "detailedStoryUrl": story_data["detailedStoryUrl"],
@@ -909,7 +909,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         # Prepare response
         response_data = {
             "title": title,
-            "StoryText": simplified_story,
+            "storyText": simplified_story,
             "detailedStoryText": story,
             "storyUrl": simplified_story_url,
             "detailedStoryUrl": detailed_story_url,
