@@ -6,7 +6,7 @@ import stripe
 import azure.functions as func
 from ..shared.services.credit_service import CreditService
 from ..shared.services.cosmos_service import CosmosService
-
+from datetime import datetime, timedelta
 stripe.api_key = os.environ.get('REACT_APP_STRIPE_SECRET_KEY')
 webhook_secret = os.environ.get('REACT_APP_STRIPE_WEBHOOK_SECRET')
 
@@ -39,7 +39,8 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 user_id = session.get('metadata', {}).get('user_id')
                 email = session.get('metadata', {}).get('email')
                 amount = session['amount_total'] / 100  # Convert from cents
-
+                session_type = session.get('metadata', {}).get('type');
+                stripe_subscription_id = session.get('subscription');
                 if not user_id:
                     logging.error("No user_id in session metadata")
                     return func.HttpResponse(status_code=400)
@@ -58,20 +59,50 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                     except Exception as e:
                         logging.error(f"Error updating user email: {str(e)}")
                         # Continue processing even if email update fails
+                credit_service = CreditService();
+                if session_type == 'subscription':
+                    logging.info(f"Processing subscription completion for user {user_id}")
+                    try:
+                      cosmos_service = CosmosService()
+                      user = await cosmos_service.get_user(user_id);
+                      if user:
+                        # Calculate subscription end date
+                        start_date = datetime.utcnow()
+                        end_date = start_date + timedelta(days=30) # Add a month
+                        # Update user's subscription status and dates
+                        user.subscription_status = "active";
+                        user.stripe_subscription_id = stripe_subscription_id;
+                        user.subscription_start_date = start_date.isoformat();
+                        user.subscription_end_date = end_date.isoformat();
+                        
+                        await cosmos_service.update_user(user)
+                      # Add 200 initial credits for a new subscription.
+                      new_balance = await credit_service.add_credits(
+                          user_id=user_id,
+                          amount=200,
+                          description="Subscription purchase - 200 credits",
+                           reference=session['payment_intent']
+                      )
 
-                # Calculate and add credits
-                credits = calculate_credits(amount)
-                if credits > 0:
-                    credit_service = CreditService()
-                    new_balance = await credit_service.add_credits(
-                        user_id=user_id,
-                        amount=credits,
-                        description=f"Credit purchase - ${amount}",
-                        reference=session['payment_intent']
-                    )
-                    logging.info(f"Added {credits} credits to user {user_id}. New balance: {new_balance}")
+                      logging.info(f"Subscription completed for user: {user_id}. New credit balance: {new_balance}, subscription_id:{stripe_subscription_id}")
+
+                    except Exception as e:
+                      logging.error(f"Error updating subscription details or adding credits:{str(e)}")
+                      # Continue processing even if subscription update fails
+                      
                 else:
-                    logging.error(f"Invalid credit amount calculated for payment amount: ${amount}")
+                  # Calculate and add credits
+                  credits = calculate_credits(amount)
+                  if credits > 0:
+                      new_balance = await credit_service.add_credits(
+                          user_id=user_id,
+                          amount=credits,
+                          description=f"Credit purchase - ${amount}",
+                          reference=session['payment_intent']
+                      )
+                      logging.info(f"Added {credits} credits to user {user_id}. New balance: {new_balance}")
+                  else:
+                      logging.error(f"Invalid credit amount calculated for payment amount: ${amount}")
 
                 return func.HttpResponse(status_code=200)
 
@@ -79,6 +110,34 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 logging.error(f"Error processing payment completion: {str(e)}")
                 # Return 200 to acknowledge receipt even if processing fails
                 return func.HttpResponse(status_code=200)
+
+        # handle subscription cancel event
+        elif event['type'] == 'customer.subscription.deleted':
+          subscription = event['data']['object']
+          user_id = subscription.get('customer')
+
+          logging.info(f"Processing subscription cancellation for user: {user_id}")
+          if not user_id:
+             logging.error("No user_id in subscription cancellation event.")
+             return func.HttpResponse(status_code=400)
+          try:
+            cosmos_service = CosmosService()
+            user = await cosmos_service.get_user(user_id);
+            if user:
+              # Update user's subscription status and end date
+              user.subscription_status = "cancelled"
+              user.subscription_end_date = datetime.utcnow().isoformat();
+              await cosmos_service.update_user(user)
+
+              logging.info(f"Updated user {user_id} with subscription cancellation")
+            else:
+              logging.error(f"User {user_id} not found in database.")
+          except Exception as e:
+             logging.error(f"Error updating subscription cancellation for user: {user_id}: {str(e)}")
+             return func.HttpResponse(status_code=200) # Return 200 to acknowledge receipt even if processing fails
+
+          return func.HttpResponse(status_code=200)
+
 
         # Return 200 for all other event types
         return func.HttpResponse(status_code=200)

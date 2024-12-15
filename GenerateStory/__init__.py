@@ -336,8 +336,8 @@ def generate_reference_image(character_description):
 
 async def generate_cover_images(title, story_text, image_style, image_model, unique_id, config):
     # Generate prompts for front and back covers
-    front_cover_prompt = f"Book cover illustration for children's story titled '{title}', {image_style} style, featuring the main characters of the story {story_text}, in vibrant colors, professional book cover design"
-    back_cover_prompt = f"Back cover illustration for children's story '{title}', {image_style} style, subtle and elegant design with space for text, professional book cover design"
+    front_cover_prompt = f"Book cover illustration for children's story titled '{title}', {image_style} style, featuring the main characters of the story {story_text}, in vibrant colors, cheerful cursive typography font, and professional book cover design"
+    back_cover_prompt = f"Back cover illustration for children's story '{title}', {image_style} style, subtle and elegant design with text `Storyfairy` at the bottom right corner of the image, professional book cover design, no barcode"
 
     # Generate both covers in parallel
     async def generate_cover(prompt, is_front):
@@ -503,7 +503,8 @@ async def generate_image_flux_schnell(prompt):
                     "megapixels": "1",
                     "num_outputs": 1,
                     "output_quality": 100,
-                    "num_inference_steps": 4
+                    "num_inference_steps": 4, 
+                    "seed": 12022023
                 }
             )
         )
@@ -899,7 +900,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             ) 
 
         # Generate cover images
-        cover_images = await generate_cover_images(title, story, image_style, image_model, unique_id, config )
+        cover_images = await generate_cover_images(title, simplified_story, image_style, image_model, unique_id, config )
 
         storyLength = { "short": 5, "medium": 7, "long": 9, "epic": 12, "saga": 15}
         creditsUsed = storyLength.get(story_length, 5)

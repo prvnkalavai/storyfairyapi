@@ -1,5 +1,7 @@
+# api/shared/types/index.py
 from pydantic import BaseModel
 from typing import Optional, Literal
+from datetime import datetime
 
 class CosmosResource(BaseModel):
   id: str
@@ -15,6 +17,10 @@ class User(CosmosResource):
   credits: int
   createdAt: str
   updatedAt: str
+  subscription_status: Optional[Literal['active','inactive','cancelled']] = None
+  subscription_start_date: Optional[str] = None
+  subscription_end_date: Optional[str] = None
+  stripe_subscription_id: Optional[str] = None
 
 class CreditTransaction(CosmosResource):
   userId: str
