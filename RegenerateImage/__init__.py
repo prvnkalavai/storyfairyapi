@@ -1,9 +1,22 @@
 # api/RegenerateImage/__init__.py
 import logging
 import json
+import os
+import uuid
 import azure.functions as func
 from ..shared.auth.decorator import require_auth
 from ..shared.services.cosmos_service import CosmosService
+from ..GenerateStory.__init__ import generate_image_stable_diffusion, generate_image_flux_schnell, generate_image_flux_pro, generate_image_google_imagen, save_to_blob_storage, generate_sas_token
+import asyncio
+from urllib.parse import urlparse
+import aiohttp
+from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions, __version__
+import pytz
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+load_dotenv()
+
+IMAGE_CONTAINER_NAME = "storyfairy-images" 
 
 @require_auth
 async def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -15,11 +28,12 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         prompt = req_body.get('prompt')
         image_style = req_body.get('imageStyle')
         image_model = req_body.get('imageModel')
-        reference_image_url = req_body.get('referenceImageUrl')
+        story_id = req_body.get('storyId')
+        image_index = req_body.get('imageIndex')
 
-        if not prompt:
+        if not all([prompt, image_style, image_model, story_id, image_index]):
             return func.HttpResponse(
-                json.dumps({"error": "Prompt is required"}),
+                json.dumps({"error": "Prompt, imageStyle, imageModel, storyId and imageIndex are required"}),
                 status_code=400,
                 mimetype="application/json"
             )
@@ -28,26 +42,45 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         cosmos_service = CosmosService()
         user = await cosmos_service.get_user(user_id)
 
-        if not user or not user.subscription or user.subscription.status != 'active':
+        if not user or not user.subscription_status or user.subscription_status != 'active':
             return func.HttpResponse(
                 json.dumps({"error": "Premium subscription required"}),
                 status_code=403,
                 mimetype="application/json"
             )
-
-        # Generate new image using existing functions
-        if reference_image_url:
-            image_url, _ = await generate_image_with_reference(
-                prompt,
-                reference_image_url,
-                image_style,
-                image_model
+        story = await cosmos_service.get_story_by_id(story_id,user_id);
+        if not story:
+            return func.HttpResponse(
+                json.dumps({"error": "Story not found"}),
+                status_code=404,
+                mimetype="application/json"
             )
+        if not story.get("images") or len(story.get("images")) <= image_index:
+           return func.HttpResponse(
+                    json.dumps({"error": "Invalid image index"}),
+                    status_code=400,
+                    mimetype="application/json"
+                )
+
+         # Extract the existing blob name from the imageUrl
+        image_url = story["images"][image_index]["imageUrl"]
+        parsed_url = urlparse(image_url)
+        image_filename = os.path.basename(parsed_url.path);
+        logging.info(f"Extracting image filename: {image_filename} from image url: {image_url}")
+        # Generate new image using existing functions
+        if image_model == 'flux_schnell':
+            image_url, _ = await generate_image_flux_schnell(prompt)
+        elif image_model == 'flux_pro':
+            image_url, _ = await generate_image_flux_pro(prompt)
+        elif image_model == 'stable_diffusion_3':
+            image_url, _ = await generate_image_stable_diffusion(prompt, story["images"][image_index]["imageUrl"])
+        elif image_model == 'imagen_3':
+            image_url, _ = await generate_image_google_imagen(prompt, os.environ.get('GEMINI_API_KEY'))
         else:
-            image_url, _ = await generate_image(
-                prompt,
-                image_style,
-                image_model
+            return func.HttpResponse(
+                json.dumps({"error": f"Invalid image model: {image_model}"}),
+                mimetype="application/json",
+                status_code=400
             )
 
         if not image_url:
@@ -56,9 +89,48 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=500,
                 mimetype="application/json"
             )
+        connection_string = os.environ.get('STORAGE_CONNECTION_STRING')
+        logging.info(f"Generate Image URL: {image_url}")
+        
+         # Save to Blob Storage
+        async with aiohttp.ClientSession() as session:
+             async with session.get(image_url) as response:
+                    image_data = await response.read()
+                    saved_url = save_to_blob_storage(
+                        image_data, 
+                        "image/jpeg",
+                        "storyfairy-images",
+                        image_filename,
+                        connection_string
+                    )
+
+        if not saved_url:
+                return func.HttpResponse(
+                    json.dumps({"error": "Failed to save image to blob storage"}),
+                    status_code=500,
+                    mimetype="application/json"
+                )
+        logging.info(f"Saved image to blob storage: {saved_url}")
+        sas_token = generate_sas_token(
+            os.environ.get('ACCOUNT_NAME'),
+            os.environ.get('ACCOUNT_KEY'),
+            "storyfairy-images",
+            image_filename
+        )
+        logging.info(f"Generated SAS token: {sas_token}")
+        sas_url = f"{saved_url}?{sas_token}"
+        logging.info(f"SAS URL: {sas_url}")
+
+        # Remove SAS token from URL
+        parsed_url = urlparse(saved_url)
+        image_url_without_sas = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        logging.info(f"Updated image URL without SAS token: {image_url_without_sas}")
+        #Update Cosmos DB
+        story["images"][image_index]["imageUrl"] = image_url_without_sas
+        await cosmos_service.update_story(story)
 
         return func.HttpResponse(
-            json.dumps({"url": image_url}),
+            json.dumps({"url": sas_url}),
             mimetype="application/json"
         )
 

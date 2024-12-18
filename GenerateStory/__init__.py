@@ -128,7 +128,7 @@ async def generate_story_gemini(topic, api_key, story_length, story_style):
     try:
         genai.configure(api_key=api_key)
         prompt = create_story_prompt(topic, story_length, story_style)
-        model = genai.GenerativeModel('gemini-1.5-flash') 
+        model = genai.GenerativeModel('gemini-2.0-flash-exp') 
         response = model.generate_content(prompt)
         #logging.info(f"Raw response from Gemini: {response.text}")
         title, story, sentences = parse_story_json(response.text.strip())
@@ -430,7 +430,7 @@ async def save_story_to_cosmos(story_data, user_id):
                     "url": remove_sas_token(cover_images["backCover"].get("url")),
                     "prompt": cover_images["backCover"].get("prompt")
                 }
-
+        #logging.info(f"Story Topic : {story_data['metadata']['topic']} ")
         story_doc = {
             "id": str(uuid.uuid4()),
             "userId": user_id,
@@ -443,17 +443,17 @@ async def save_story_to_cosmos(story_data, user_id):
             "coverImages": cleaned_cover_images,
             "createdAt": datetime.utcnow().isoformat(),
             "metadata": {
-                "topic": story_data.get("topic", ""),
-                "storyLength": story_data.get("storyLength", "short"),
-                "imageStyle": story_data.get("imageStyle", "whimsical"),
-                "storyModel": story_data.get("storyModel", "gemini"),
-                "imageModel": story_data.get("imageModel", "flux_schnell"),
-                "storyStyle": story_data.get("storyStyle", "adventure"),
+                "topic": story_data['metadata']['topic'],
+                "storyLength": story_data["metadata"].get("storyLength", "short"),
+                "imageStyle": story_data["metadata"].get("imageStyle", "whimsical"),
+                "storyModel": story_data["metadata"].get("storyModel", "gemini"),
+                "imageModel": story_data["metadata"].get("imageModel", "flux_schnell"),
+                "storyStyle": story_data["metadata"].get("storyStyle", "adventure"),
                 "voiceName": story_data.get("voiceName", "en-US-AvaNeural"),
-                "creditsUsed": story_data.get("creditsUsed", 5)
+                "creditsUsed": story_data["metadata"].get("creditsUsed", 5)
             }
         }
-
+        #logging.info(f"Saving story to Cosmos DB: {story_doc}")
         await cosmos_service.create_story(story_doc)
         return story_doc["id"]
     except Exception as e:
@@ -929,9 +929,10 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 "creditsUsed": creditsUsed
             }
         }
+        #logging.info(f"Saving Response data to Cosmos DB: {response_data}")
 
         story_id = await save_story_to_cosmos(response_data, user_id)
-        response_data["Id"] = story_id
+        response_data["id"] = story_id
 
         return func.HttpResponse(
             json.dumps(response_data, default=str),

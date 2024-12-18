@@ -5,6 +5,7 @@ from datetime import datetime
 from azure.cosmos import CosmosClient, PartitionKey
 from ..models.user import User
 from ..models.credit_transaction import CreditTransaction
+from ..models.story import Story
 
 class CosmosService:
     def __init__(self):
@@ -109,14 +110,14 @@ class CosmosService:
                 "coverImages": story_data["coverImages"],
                 "createdAt": datetime.utcnow().isoformat(),
                 "metadata": {
-                    "topic": story_data.get("topic", ""),
-                    "storyLength": story_data.get("storyLength", "short"),
-                    "imageStyle": story_data.get("imageStyle", "whimsical"),
-                    "storyModel": story_data.get("storyModel", "gemini"),
-                    "imageModel": story_data.get("imageModel", "flux_schnell"),
-                    "storyStyle": story_data.get("storyStyle", "adventure"),
+                    "topic": story_data['metadata']['topic'],
+                    "storyLength": story_data["metadata"].get("storyLength", "short"),
+                    "imageStyle": story_data["metadata"].get("imageStyle", "whimsical"),
+                    "storyModel": story_data["metadata"].get("storyModel", "gemini"),
+                    "imageModel": story_data["metadata"].get("imageModel", "flux_schnell"),
+                    "storyStyle": story_data["metadata"].get("storyStyle", "adventure"),
                     "voiceName": story_data.get("voiceName", "en-US-AvaNeural"),
-                    "creditsUsed": story_data.get("creditsUsed", 5)
+                    "creditsUsed": story_data["metadata"].get("creditsUsed", 5)
                 }
             }
 
@@ -214,3 +215,18 @@ class CosmosService:
         except Exception as e:
             logging.error(f"Error fetching story from Cosmos DB: {e}")
             raise
+
+    async def update_story(self, story: Dict[str, Any]) -> str:  
+            """  
+            Update a story document in Cosmos DB by replacing it.  
+            Returns the updated story's ID.  
+            """  
+            try:
+                response = self.stories_container.replace_item(
+                    item=story["id"],
+                    body=story
+                )
+                return response["id"]
+            except Exception as e:
+                logging.error(f"Error updating story in Cosmos DB: {e}")
+                raise
