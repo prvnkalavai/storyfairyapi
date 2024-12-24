@@ -111,26 +111,17 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json"
                 )
         logging.info(f"Saved image to blob storage: {saved_url}")
-        sas_token = generate_sas_token(
-            os.environ.get('ACCOUNT_NAME'),
-            os.environ.get('ACCOUNT_KEY'),
-            "storyfairy-images",
-            image_filename
-        )
-        logging.info(f"Generated SAS token: {sas_token}")
-        sas_url = f"{saved_url}?{sas_token}"
-        logging.info(f"SAS URL: {sas_url}")
-
-        # Remove SAS token from URL
+        
         parsed_url = urlparse(saved_url)
-        image_url_without_sas = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-        logging.info(f"Updated image URL without SAS token: {image_url_without_sas}")
+        blob_name = os.path.basename(parsed_url.path)
+        image_url_without_sas = f"/api/blob/{blob_name}?container=storyfairy-images"
+        
         #Update Cosmos DB
         story["images"][image_index]["imageUrl"] = image_url_without_sas
         await cosmos_service.update_story(story)
 
         return func.HttpResponse(
-            json.dumps({"url": sas_url}),
+            json.dumps({"url": image_url_without_sas}),
             mimetype="application/json"
         )
 

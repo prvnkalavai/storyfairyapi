@@ -24,6 +24,7 @@ from ..shared.services.cosmos_service import CosmosService
 from azure.ai.contentsafety import ContentSafetyClient
 from azure.ai.contentsafety.models import AnalyzeTextOptions, TextCategory
 from azure.core.credentials import AzureKeyCredential
+from urllib.parse import urlparse
 
 
 # Declare the global variable at module level
@@ -681,16 +682,10 @@ async def generate_images_parallel(sentences, story_title, image_style, connecti
                             )
                 
                             if saved_image_url:
-                                sas_token = await asyncio.get_event_loop().run_in_executor(
-                                    executor,
-                                    generate_sas_token,
-                                    account_name, account_key, IMAGE_CONTAINER_NAME,
-                                    image_filename, "2022-11-02"
-                            )
-                    
-                                sas_url = f"{saved_image_url}?{sas_token}"
-                                return {"imageUrl": sas_url, "prompt": prompt}
-                
+                                 parsed_url = urlparse(saved_image_url)
+                                 blob_name = os.path.basename(parsed_url.path)
+                                 return {"imageUrl": f"/api/blob/{blob_name}?container={IMAGE_CONTAINER_NAME}", "prompt": prompt}
+                                                
                 except Exception as e:
                     logging.error(f"Error processing images : {e}")
             tasks.append(generate_and_save_image(detailed_prompt, i))   
