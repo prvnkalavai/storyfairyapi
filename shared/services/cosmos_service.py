@@ -115,7 +115,7 @@ class CosmosService:
                     "imageStyle": story_data["metadata"].get("imageStyle", "whimsical"),
                     "storyModel": story_data["metadata"].get("storyModel", "gemini"),
                     "imageModel": story_data["metadata"].get("imageModel", "flux_schnell"),
-                    "storyStyle": story_data["metadata"].get("storyStyle", "adventure"),
+                    "storyTheme": story_data["metadata"].get("storyTheme", "adventure"),
                     "voiceName": story_data.get("voiceName", "en-US-AvaNeural"),
                     "creditsUsed": story_data["metadata"].get("creditsUsed", 5)
                 }

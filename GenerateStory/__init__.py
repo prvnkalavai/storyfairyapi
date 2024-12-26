@@ -86,10 +86,10 @@ class Config:
 #         logging.error(f"Failed to initialize auth middleware: {str(e)}")
 #         raise
 
-async def generate_story_openai(topic, api_key, story_length, story_style):
+async def generate_story_openai(topic, api_key, story_length, story_theme):
     try:
         client = openai.OpenAI(api_key=api_key)
-        prompt = create_story_prompt(topic, story_length, story_style)
+        prompt = create_story_prompt(topic, story_length, story_theme)
         response = client.chat.completions.create(
             model="gpt-4o-mini",  
             messages=[
@@ -106,10 +106,10 @@ async def generate_story_openai(topic, api_key, story_length, story_style):
         logging.error(f"OpenAI error: {e}")
         return None, None, None
 
-async def generate_story_grok(topic, api_key, story_length, story_style):
+async def generate_story_grok(topic, api_key, story_length, story_theme):
     try:
         client = openai.OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
-        prompt = create_story_prompt(topic, story_length, story_style)
+        prompt = create_story_prompt(topic, story_length, story_theme)
         response = client.chat.completions.create(
             model="grok-beta",  
             messages=[
@@ -125,10 +125,10 @@ async def generate_story_grok(topic, api_key, story_length, story_style):
         logging.error(f"Grok error: {e}")
         return None, None, None 
 
-async def generate_story_gemini(topic, api_key, story_length, story_style):
+async def generate_story_gemini(topic, api_key, story_length, story_theme):
     try:
         genai.configure(api_key=api_key)
-        prompt = create_story_prompt(topic, story_length, story_style)
+        prompt = create_story_prompt(topic, story_length, story_theme)
         model = genai.GenerativeModel('gemini-2.0-flash-exp') 
         response = model.generate_content(prompt)
         #logging.info(f"Raw response from Gemini: {response.text}")
@@ -139,7 +139,7 @@ async def generate_story_gemini(topic, api_key, story_length, story_style):
         logging.error(f"Gemini error: {e}")
         return None, None, None
  
-def create_story_prompt(topic, story_length="short", story_style="adventure"):
+def create_story_prompt(topic, story_length="short", story_theme="adventure"):
     """Creates the story prompt based on whether a topic is provided or not."""
     sentence_count = { "short": 5, "medium": 7, "long": 9, "epic": 12, "saga": 15}
     num_sentences = sentence_count.get(story_length, 5)
@@ -154,21 +154,25 @@ def create_story_prompt(topic, story_length="short", story_style="adventure"):
             - Sexually suggestive content
             - Dangerous or illegalactivities
             - Any references to drugs, alcohol, or adult situations
-            Write a {story_length}, imaginative and creative {num_sentences} sentence children's story suitable for young readers about {topic}. The story should have a positive tone, with a happy ending, and should encourage imagination and creativity. The story style should be {story_style}...
+            Write a {story_length}, imaginative and creative {num_sentences} sentence children's story suitable for young readers about {topic}. The story should have a positive tone, with a happy ending, and should encourage imagination and creativity. The story theme should be {story_theme}...
 
             Please provide the response as a JSON object without any markdown elements or formatting. Format the story as a JSON object with each sentence as a separate entry in an array of sentences under the 'sentences' property. Additionally, generate a unique and creative title for the story and include it in a separate property called 'Title' in the JSON response object. DO NOT include any additional formatting or markdown.       
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Provide a detailed description of their appearance, personality, attire, accessories, and any unique attributes like clothing, toys, skin color, hair/fur color,etc in EVERY sentence. Use vivid language and sensory details. Ensure these details remain consistent across all sentences in which the central character appears.  Be extremely repetitive with explicit details.
-            * **Scene:**  Vividly describe the setting in EVERY sentence, including the time of day, weather, and specific details about the environment. Use descriptive language to create a strong visual image. Ensure these details remain consistent across all sentences.  If the scene changes, the same rule applies for the new scene as well.  Be extremely repetitive with explicit details.
-            * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
-            * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in detail, including their appearance, function, and significance to the story. Ensure these details remain consistent across all sentences in which the objects/items appear. Be extremely repetitive with explicit details
-
+            * **Central Character(s):** Always mention all central characters by name. Provide an *extremely* detailed description of their appearance, personality, attire, *including every specific item of clothing and any accessories* (e.g., specific colors, patterns, materials, any logos or markings, how clothing fits, details of accessories like straps, buckles, etc.), and any unique attributes like clothing, toys, skin color, hair/fur color, etc. in EVERY sentence. Use vivid language and sensory details. Ensure these details remain *absolutely identical* across all sentences in which the central characters appear. Be extremely repetitive with these explicit details.
+            * **Scene:** Vividly describe the setting in EVERY sentence, including the time of day, weather, and specific details about the environment. Use descriptive language to create a strong visual image. Ensure these details remain consistent across all sentences. If the scene changes, the same rule applies for the new scene as well. Be extremely repetitive with explicit details.
+            * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. If there are no supporting characters, explicitly state this with the same phrasing in every sentence where their presence would be relevant based on the story's events. Be extremely repetitive with explicit details.* **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
+            * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in extreme detail, including their exact shape, size (using comparisons if helpful, e.g., 'as large as a car'), precise colors and textures, any unique markings or features, and their function and significance to the story. Ensure these details remain *absolutely identical* across all sentences in which the objects/items appear. If no specific objects are relevant, explicitly state this with the same phrasing in every relevant sentence. Be extremely repetitive with these explicit, unchanging details.
             Example:
-            "Luna, a curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, tiptoed through the moonlit forest, her heart full of wonder and excitement.",
-            "The cool night breeze rustled the leaves of the ancient, towering trees, casting dancing shadows on the forest floor, as Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, followed a trail of sparkling dust to a hidden clearing.",
-            "In the clearing stood a magical tree adorned with glowing crystals, and beside it, a wise old owl with soft, cloud-like feathers and twinkling, ancient eyes, greeted Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, with a warm smile.",
-            "Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, discovered an ornate, golden key lying among the soft, mossy ground, its intricate design glinting in the silver moonlight, as the wise old owl with soft, cloud-like feathers and twinkling, ancient eyes watched over her.",
-            "With the help of the wise old owl with soft, cloud-like feathers and twinkling, ancient eyes, Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, used the golden key to unlock a hidden door in the magical tree, revealing a wondrous world filled with friendship and adventure, where she knew she would always be happy and safe."
+            {
+                "Title": "Lily's Little Helper",
+                "sentences": [
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, walked along a quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. There were no specific objects present.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, noticed a small, whimpering puppy curled up by the side of the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. The puppy was small and brown, with floppy ears and a small scratch on its leg.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, gently knelt beside the small, whimpering brown puppy with floppy ears and a small scratch on its leg, feeling empathy for its pain, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
+                    "Carefully, Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, scooped up the small, whimpering brown puppy with floppy ears and a small scratch on its leg, holding it close to her chest, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, carried the small, whimpering brown puppy with floppy ears and a small scratch on its leg, gently stroking its soft fur, all the way home, feeling happy that she could help, along the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present."
+                ]
+            }
             and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
             """
     else:
@@ -182,21 +186,25 @@ def create_story_prompt(topic, story_length="short", story_style="adventure"):
             - Sexually suggestive content
             - Dangerous or illegalactivities
             - Any references to drugs, alcohol, or adult situations
-            Write a random {story_length}, imaginative and creative {num_sentences} sentence children's story suitable for young readers. The story should have a positive tone, with a happy ending, and should encourage imagination and creativity. The story style should be {story_style}...  
+            Write a random {story_length}, imaginative and creative {num_sentences} sentence children's story suitable for young readers. The story should have a positive tone, with a happy ending, and should encourage imagination and creativity. The story theme should be {story_theme}...  
 
             Please provide the response as a JSON object without any markdown elements or formatting. Format the story as a JSON object with each sentence as a separate entry in an array of sentences under the 'sentences' property. Additionally, generate a unique and creative title for the story and include it in a separate property called 'Title' in the JSON response object. DO NOT include any additional formatting or markdown.       
             Crucially, EVERY sentence must include these details:
-            * **Central Character:**  Always mention the main character by name. Provide a detailed description of their appearance, personality, attire, accessories, and any unique attributes like clothing, toys, skin color, hair/fur color,etc in EVERY sentence. Use vivid language and sensory details. Ensure these details remain consistent across all sentences in which the central character appears.  Be extremely repetitive with explicit details.
-            * **Scene:**  Vividly describe the setting in EVERY sentence, including the time of day, weather, and specific details about the environment. Use descriptive language to create a strong visual image. Ensure these details remain consistent across all sentences.  If the scene changes, the same rule applies for the new scene as well.  Be extremely repetitive with explicit details.
-            * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
-            * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in detail, including their appearance, function, and significance to the story. Ensure these details remain consistent across all sentences in which the objects/items appear. Be extremely repetitive with explicit details
-
+            * **Central Character(s):** Always mention all central characters by name. Provide an *extremely* detailed description of their appearance, personality, attire, *including every specific item of clothing and any accessories* (e.g., specific colors, patterns, materials, any logos or markings, how clothing fits, details of accessories like straps, buckles, etc.), and any unique attributes like clothing, toys, skin color, hair/fur color, etc. in EVERY sentence. Use vivid language and sensory details. Ensure these details remain *absolutely identical* across all sentences in which the central characters appear. Be extremely repetitive with these explicit details.
+            * **Scene:** Vividly describe the setting in EVERY sentence, including the time of day, weather, and specific details about the environment. Use descriptive language to create a strong visual image. Ensure these details remain consistent across all sentences. If the scene changes, the same rule applies for the new scene as well. Be extremely repetitive with explicit details.
+            * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. If there are no supporting characters, explicitly state this with the same phrasing in every sentence where their presence would be relevant based on the story's events. Be extremely repetitive with explicit details.* **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
+            * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in extreme detail, including their exact shape, size (using comparisons if helpful, e.g., 'as large as a car'), precise colors and textures, any unique markings or features, and their function and significance to the story. Ensure these details remain *absolutely identical* across all sentences in which the objects/items appear. If no specific objects are relevant, explicitly state this with the same phrasing in every relevant sentence. Be extremely repetitive with these explicit, unchanging details.
             Example:
-            "Luna, a curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, tiptoed through the moonlit forest, her heart full of wonder and excitement.",
-            "The cool night breeze rustled the leaves of the ancient, towering trees, casting dancing shadows on the forest floor, as Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, followed a trail of sparkling dust to a hidden clearing.",
-            "In the clearing stood a magical tree adorned with glowing crystals, and beside it, a wise old owl with soft, cloud-like feathers and twinkling, ancient eyes, greeted Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, with a warm smile.",
-            "Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, discovered an ornate, golden key lying among the soft, mossy ground, its intricate design glinting in the silver moonlight, as the wise old owl with soft, cloud-like feathers and twinkling, ancient eyes watched over her.",
-            "With the help of the wise old owl with soft, cloud-like feathers and twinkling, ancient eyes, Luna, the curious little fox with a fluffy, silver-gray coat, bright, inquisitive eyes, and a shimmering blue bow around her neck, used the golden key to unlock a hidden door in the magical tree, revealing a wondrous world filled with friendship and adventure, where she knew she would always be happy and safe."
+            {
+                "Title": "Lily's Little Helper",
+                "sentences": [
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, walked along a quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. There were no specific objects present.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, noticed a small, whimpering puppy curled up by the side of the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. The puppy was small and brown, with floppy ears and a small scratch on its leg.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, gently knelt beside the small, whimpering brown puppy with floppy ears and a small scratch on its leg, feeling empathy for its pain, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
+                    "Carefully, Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, scooped up the small, whimpering brown puppy with floppy ears and a small scratch on its leg, holding it close to her chest, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
+                    "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, carried the small, whimpering brown puppy with floppy ears and a small scratch on its leg, gently stroking its soft fur, all the way home, feeling happy that she could help, along the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present."
+                ]
+            }
             and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
             """
     return prompt
@@ -449,7 +457,7 @@ async def save_story_to_cosmos(story_data, user_id):
                 "imageStyle": story_data["metadata"].get("imageStyle", "whimsical"),
                 "storyModel": story_data["metadata"].get("storyModel", "gemini"),
                 "imageModel": story_data["metadata"].get("imageModel", "flux_schnell"),
-                "storyStyle": story_data["metadata"].get("storyStyle", "adventure"),
+                "storyTheme": story_data["metadata"].get("storyTheme", "adventure"),
                 "voiceName": story_data.get("voiceName", "en-US-AvaNeural"),
                 "creditsUsed": story_data["metadata"].get("creditsUsed", 5)
             }
@@ -790,13 +798,13 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             except ValueError:
                 image_model = 'flux-schnell'
         
-        story_style = req.params.get('storyStyle', 'adventure')
-        if not story_style:
+        story_theme = req.params.get('storyTheme', 'adventure')
+        if not story_theme:
             try:
                 req_body = req.get_json()
-                story_style = req_body.get('storyStyle', 'adventure')
+                story_theme = req_body.get('storyTheme', 'adventure')
             except ValueError:
-                story_style = 'adventure'
+                story_theme = 'adventure'
 
         voice_name = req.params.get('voiceName', 'en-US-AvaNeural')
         if not voice_name:
@@ -809,11 +817,11 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         # Generate story using the specified model
         logging.info(f"Generating story with model: {story_model}")
         if story_model == 'gemini':
-            title, story, sentences = await generate_story_gemini(topic, config.gemini_key, story_length, story_style)
+            title, story, sentences = await generate_story_gemini(topic, config.gemini_key, story_length, story_theme)
         elif story_model == 'openai':
-            title, story, sentences = await generate_story_openai(topic, config.openai_key, story_length, story_style)
+            title, story, sentences = await generate_story_openai(topic, config.openai_key, story_length, story_theme)
         elif story_model == 'grok':
-            title, story, sentences = await generate_story_grok(topic, config.grok_key, story_length, story_style)
+            title, story, sentences = await generate_story_grok(topic, config.grok_key, story_length, story_theme)
         else:
             return func.HttpResponse(
                 json.dumps({"error": f"Invalid story model: {story_model}"}),
@@ -920,7 +928,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 "imageStyle": image_style,
                 "storyModel": story_model,
                 "imageModel": image_model,
-                "storyStyle": story_style,
+                "storyTheme": story_theme,
                 "creditsUsed": creditsUsed
             }
         }
