@@ -131,7 +131,7 @@ async def generate_story_gemini(topic, api_key, story_length, story_theme):
         prompt = create_story_prompt(topic, story_length, story_theme)
         model = genai.GenerativeModel('gemini-2.0-flash-exp') 
         response = model.generate_content(prompt)
-        #logging.info(f"Raw response from Gemini: {response.text}")
+        logging.info(f"Raw response from Gemini: {response.text}")
         title, story, sentences = parse_story_json(response.text.strip())
         logging.info(f"Parsed JSON story: {story}")
         return title, story, sentences
@@ -163,17 +163,12 @@ def create_story_prompt(topic, story_length="short", story_theme="adventure"):
             * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. If there are no supporting characters, explicitly state this with the same phrasing in every sentence where their presence would be relevant based on the story's events. Be extremely repetitive with explicit details.* **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
             * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in extreme detail, including their exact shape, size (using comparisons if helpful, e.g., 'as large as a car'), precise colors and textures, any unique markings or features, and their function and significance to the story. Ensure these details remain *absolutely identical* across all sentences in which the objects/items appear. If no specific objects are relevant, explicitly state this with the same phrasing in every relevant sentence. Be extremely repetitive with these explicit, unchanging details.
             Example:
-            {
-                "Title": "Lily's Little Helper",
-                "sentences": [
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, walked along a quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. There were no specific objects present.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, noticed a small, whimpering puppy curled up by the side of the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. The puppy was small and brown, with floppy ears and a small scratch on its leg.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, gently knelt beside the small, whimpering brown puppy with floppy ears and a small scratch on its leg, feeling empathy for its pain, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
                     "Carefully, Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, scooped up the small, whimpering brown puppy with floppy ears and a small scratch on its leg, holding it close to her chest, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, carried the small, whimpering brown puppy with floppy ears and a small scratch on its leg, gently stroking its soft fur, all the way home, feeling happy that she could help, along the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present."
-                ]
-            }
-            and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
+           and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
             """
     else:
         prompt = """
@@ -195,16 +190,11 @@ def create_story_prompt(topic, story_length="short", story_theme="adventure"):
             * **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. If there are no supporting characters, explicitly state this with the same phrasing in every sentence where their presence would be relevant based on the story's events. Be extremely repetitive with explicit details.* **Supporting Characters:** Describe any supporting characters in detail, including their appearance, personality, and relationship to the main character. Ensure these details remain consistent across all sentences in which the supporting characters appear. Be extremely repetitive with explicit details.
             * **Objects/Items:** Describe any objects or items or artifacts that appear in the scene in extreme detail, including their exact shape, size (using comparisons if helpful, e.g., 'as large as a car'), precise colors and textures, any unique markings or features, and their function and significance to the story. Ensure these details remain *absolutely identical* across all sentences in which the objects/items appear. If no specific objects are relevant, explicitly state this with the same phrasing in every relevant sentence. Be extremely repetitive with these explicit, unchanging details.
             Example:
-            {
-                "Title": "Lily's Little Helper",
-                "sentences": [
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, walked along a quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. There were no specific objects present.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, noticed a small, whimpering puppy curled up by the side of the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present. The puppy was small and brown, with floppy ears and a small scratch on its leg.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, gently knelt beside the small, whimpering brown puppy with floppy ears and a small scratch on its leg, feeling empathy for its pain, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
                     "Carefully, Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, scooped up the small, whimpering brown puppy with floppy ears and a small scratch on its leg, holding it close to her chest, on the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present.",
                     "Lily, a kind girl with bright green eyes, long, brown braids tied with bright yellow ribbons, a sprinkle of freckles across her nose, and wearing a light blue denim jacket with small, silver buttons, a bright pink t-shirt with a picture of a smiling cat on the front, tucked in with dark blue jeans, and bright red sneakers with white laces, carried the small, whimpering brown puppy with floppy ears and a small scratch on its leg, gently stroking its soft fur, all the way home, feeling happy that she could help, along the quiet, tree-lined road on a sunny afternoon, with fluffy white clouds drifting lazily across the clear blue sky. There were no other people present."
-                ]
-            }
             and so on...  Every sentence must mention ALL relevant characters and FULL scene details. Ensure no details are left out in any sentence
             """
     return prompt
@@ -248,11 +238,12 @@ async def moderate_story(story_text, endpoint, key):
 def parse_story_json(story_response):
     try:
         if story_response.startswith('```json') and story_response.endswith('```'):
-            # Remove markdown elements
+            logging.info("Removing markdown elements from the story response")
             story_response = story_response.lstrip('```json\n').rstrip('```')
         story_json = json.loads(story_response)  
         title = story_json['Title']
         raw_sentences = story_json['sentences']
+        logging.info(f"Raw sentences: {raw_sentences}")
         sentences = []
         for sentence in raw_sentences:
             cleaned_sentence = sentence.strip()

@@ -31,7 +31,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         story_id = req_body.get('storyId')
         image_index = req_body.get('imageIndex')
 
-        if not all([prompt, image_style, image_model, story_id, image_index]):
+        if any(x is None for x in [prompt, image_style, image_model, story_id, image_index]):
             return func.HttpResponse(
                 json.dumps({"error": "Prompt, imageStyle, imageModel, storyId and imageIndex are required"}),
                 status_code=400,
@@ -114,10 +114,12 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         
         parsed_url = urlparse(saved_url)
         blob_name = os.path.basename(parsed_url.path)
+        image_url = f"/api/blob/{blob_name}"
+        
         image_url_without_sas = f"/api/blob/{blob_name}?container=storyfairy-images"
         
         #Update Cosmos DB
-        story["images"][image_index]["imageUrl"] = image_url_without_sas
+        story["images"][image_index]["imageUrl"] = image_url
         await cosmos_service.update_story(story)
 
         return func.HttpResponse(
