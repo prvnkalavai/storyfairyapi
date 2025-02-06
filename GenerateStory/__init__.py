@@ -14,7 +14,6 @@ import aiohttp
 import replicate
 from dotenv import load_dotenv
 import pytz
-import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict
@@ -25,6 +24,10 @@ from azure.ai.contentsafety import ContentSafetyClient
 from azure.ai.contentsafety.models import AnalyzeTextOptions, TextCategory
 from azure.core.credentials import AzureKeyCredential
 from urllib.parse import urlparse
+from google import generativeai as genai
+from google.generativeai import types
+from PIL import Image
+from io import BytesIO
 
 
 # Declare the global variable at module level
@@ -540,10 +543,24 @@ async def generate_image_flux_pro(prompt):
         return None, prompt
 
 async def generate_image_google_imagen(prompt, api_key):
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.ImageGenerationModel("imagen-3.0-generate-001")
-        output = await model.generate_images(
+    """
+    Generates an image using Google Imagen 3.
+
+    Args:
+        prompt: The text prompt to use for image generation.
+        api_key: The Google Generative AI API key.
+
+    Returns:
+        A tuple containing:
+            - The generated image URL (or None if an error occurred).
+            - The original prompt used for image generation.
+    """
+    try:       
+        genai.configure(api_key=api_key) 
+        model = genai.GenerativeModel("imagen-3.0-generate-002")  # Specify the model here
+        logging.info(f"Generating image with Google Imagen 3: {prompt}")
+
+        response = await model.generate_images(
             prompt=prompt,
             number_of_images=1,
             safety_filter_level="block_only_high",
@@ -551,11 +568,13 @@ async def generate_image_google_imagen(prompt, api_key):
             aspect_ratio="1:1",
             negative_prompt="Outside, Text, Distorted",
         )
-        image_url = output.image_url
-        logging.info(f"Generated image (Google Imagen 3 Fast): {image_url}")
+
+        image_url = response.image_url
+        logging.info(f"Generated image URL: {image_url} using prompt: {prompt}")
         return image_url, prompt
+
     except Exception as e:
-        logging.error(f"Google Imagen 3 Fast error: {e}")
+        logging.exception(f"Error generating image with Google Imagen 3 using prompt: {prompt}")
         return None, prompt
 
 def save_to_blob_storage(data, content_type, container_name, file_name, connection_string): 
